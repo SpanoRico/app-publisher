@@ -1,0 +1,23 @@
+node_modules/
+.env
+.DS_Store
+*.log
+npm-debug.log*
+.vscode/
+.idea/
+
+# API Keys - IMPORTANT: Never commit these
+AuthKey_*.p8
+*.p8
+*.p12
+*.cer
+
+# Build outputs
+dist/
+build/
+*.ipa
+*.app
+
+# Temporary files
+*.tmp
+.temp/
