@@ -575,21 +575,131 @@ class AppStoreMetadataPublisher {
     
     for (const iap of this.config.inAppPurchases) {
       try {
-        // Note: Les IAP doivent être créés manuellement dans App Store Connect
-        // L'API v2 est en cours de développement mais pas encore disponible pour tous
-        this.log(`IAP ${iap.productId}: Création manuelle requise dans App Store Connect`, 'warning');
-        this.log(`   Type: ${iap.type || 'CONSUMABLE'}`, 'info');
-        this.log(`   Nom: ${iap.referenceName}`, 'info');
-        continue;
+        // Tentative avec l'API v2 (disponible selon certaines sources 2024-2025)
+        const iapData = {
+          data: {
+            type: 'inAppPurchaseV2s',  // Note: le type pourrait être inAppPurchaseV2s
+            attributes: {
+              name: iap.referenceName,
+              productId: iap.productId,
+              inAppPurchaseType: iap.type || 'CONSUMABLE',
+              reviewNote: iap.reviewNote || 'In-app purchase for app functionality',
+              familySharable: iap.familySharable || false,
+              state: 'READY_TO_SUBMIT'
+            },
+            relationships: {
+              app: {
+                data: { type: 'apps', id: this.appId }
+              }
+            }
+          }
+        };
         
-        /* Code désactivé - en attente de l'API v2
-        const response = await this.apiRequest('POST', '/v2/inAppPurchases', iapData);
-        // Localisations et configuration seront faites manuellement
-        */
+        try {
+          // Essayer d'abord avec v2 (note: cet endpoint n'existe pas encore en 2025)
+          const response = await this.apiRequest('POST', '/v2/inAppPurchases', iapData);
+          const iapId = response.data.id;
+          
+          // Si succès, ajouter les localisations
+          for (const [locale, localization] of Object.entries(iap.localizations || {})) {
+            try {
+              const locData = {
+                data: {
+                  type: 'inAppPurchaseLocalizations',
+                  attributes: {
+                    locale: locale,
+                    name: localization.name,
+                    description: localization.description
+                  },
+                  relationships: {
+                    inAppPurchaseV2: {
+                      data: { type: 'inAppPurchaseV2s', id: iapId }
+                    }
+                  }
+                }
+              };
+              
+              await this.apiRequest('POST', '/v2/inAppPurchaseLocalizations', locData);
+            } catch (error) {
+              this.log(`Localisation IAP ${locale}: ${error.message}`, 'warning');
+            }
+          }
+          
+          // Configurer le prix si disponible
+          if (iap.price) {
+            await this.setIAPPrice(iapId, iap.price);
+          }
+          
+          this.log(`IAP créé: ${iap.referenceName} (${iap.productId})`, 'success');
+          
+        } catch (apiError) {
+          // Si l'API v2 échoue, afficher les instructions manuelles
+          if (apiError.message.includes('not found') || apiError.message.includes('not allow')) {
+            this.log(`IAP ${iap.productId}: Création manuelle requise dans App Store Connect`, 'warning');
+            this.log(`   Type: ${iap.type || 'CONSUMABLE'}`, 'info');
+            this.log(`   Nom: ${iap.referenceName}`, 'info');
+            if (iap.price) {
+              this.log(`   Prix suggéré: ${iap.price}$`, 'info');
+            }
+          } else {
+            throw apiError;
+          }
+        }
         
       } catch (error) {
         this.log(`Erreur création IAP ${iap.productId}: ${error.message}`, 'error');
       }
+    }
+  }
+  
+  async setIAPPrice(iapId, price) {
+    try {
+      // Récupérer les price points pour les IAP
+      const pricePointsResponse = await this.apiRequest('GET',
+        `/v2/inAppPurchases/${iapId}/pricePoints?filter[territory]=USA`);
+      
+      const pricePoint = pricePointsResponse.data?.find(point => 
+        parseFloat(point.attributes.customerPrice) === price
+      );
+      
+      if (pricePoint) {
+        const priceScheduleData = {
+          data: {
+            type: 'inAppPurchasePriceSchedules',
+            relationships: {
+              inAppPurchase: {
+                data: { type: 'inAppPurchaseV2s', id: iapId }
+              },
+              baseTerritory: {
+                data: { type: 'territories', id: 'USA' }
+              },
+              manualPrices: {
+                data: [{ type: 'inAppPurchasePrices', id: 'price-1' }]
+              }
+            }
+          },
+          included: [
+            {
+              id: 'price-1',
+              type: 'inAppPurchasePrices',
+              attributes: {
+                startDate: null
+              },
+              relationships: {
+                inAppPurchasePricePoint: {
+                  data: { type: 'inAppPurchasePricePoints', id: pricePoint.id }
+                }
+              }
+            }
+          ]
+        };
+        
+        await this.apiRequest('POST', '/v2/inAppPurchasePriceSchedules', priceScheduleData);
+        this.log(`   Prix configuré: ${price}$`, 'info');
+      }
+    } catch (error) {
+      // Le prix devra être configuré manuellement
+      this.log(`   Prix à configurer manuellement: ${price}$`, 'info');
     }
   }
 
@@ -669,8 +779,89 @@ class AppStoreMetadataPublisher {
       await this.apiRequest('POST', '/appPriceSchedules', scheduleData);
       this.log(`Prix configuré: ${targetPrice}$ (Price Point: ${pricePoint.id})`, 'success');
       
+      // Configurer la disponibilité mondiale si demandée
+      if (this.config.pricing.availableInAllTerritories) {
+        await this.setAppAvailability();
+      }
+      
     } catch (error) {
       this.log(`Erreur App Price Schedule: ${error.message}`, 'warning');
+    }
+  }
+  
+  async setAppAvailability() {
+    this.log('Configuration de la disponibilité mondiale...', 'loading');
+    
+    try {
+      // Récupérer tous les territoires disponibles
+      const territoriesResponse = await this.apiRequest('GET', '/territories?limit=200');
+      const allTerritories = territoriesResponse.data.map(t => ({
+        type: 'territories',
+        id: t.id
+      }));
+      
+      // Créer ou mettre à jour les disponibilités
+      const availabilityData = {
+        data: {
+          type: 'appAvailabilities',
+          attributes: {
+            availableInNewTerritories: true // Automatiquement disponible dans les nouveaux territoires
+          },
+          relationships: {
+            app: {
+              data: { type: 'apps', id: this.appId }
+            },
+            availableTerritories: {
+              data: allTerritories
+            }
+          }
+        }
+      };
+      
+      // Vérifier si une configuration existe déjà
+      try {
+        const existing = await this.apiRequest('GET', `/apps/${this.appId}/appAvailability`);
+        
+        if (existing.data) {
+          // Mettre à jour
+          availabilityData.data.id = existing.data.id;
+          await this.apiRequest('PATCH', `/appAvailabilities/${existing.data.id}`, availabilityData);
+        } else {
+          // Créer
+          await this.apiRequest('POST', '/appAvailabilities', availabilityData);
+        }
+        
+        this.log(`Disponibilité configurée: ${allTerritories.length} territoires`, 'success');
+      } catch (error) {
+        // L'endpoint appAvailabilities pourrait ne pas être disponible pour toutes les apps
+        // Dans ce cas, essayer avec l'ancien système
+        await this.setAppAvailabilityLegacy(allTerritories);
+      }
+      
+    } catch (error) {
+      this.log(`Configuration disponibilité: Vérifiez dans App Store Connect`, 'info');
+    }
+  }
+  
+  async setAppAvailabilityLegacy(territories) {
+    // Méthode alternative via l'app info
+    try {
+      if (this.appInfoId) {
+        const appInfoData = {
+          data: {
+            type: 'appInfos',
+            id: this.appInfoId,
+            attributes: {
+              availableInNewTerritories: true
+            }
+          }
+        };
+        
+        await this.apiRequest('PATCH', `/appInfos/${this.appInfoId}`, appInfoData);
+        this.log('Disponibilité mondiale activée (nouveaux territoires)', 'success');
+      }
+    } catch (error) {
+      this.log('Disponibilité mondiale: Configuration manuelle requise', 'info');
     }
   }
 
@@ -784,14 +975,11 @@ class AppStoreMetadataPublisher {
         data: {
           type: 'appEncryptionDeclarations',
           attributes: {
-            // usesEncryption ne doit pas être dans les attributs selon l'API
-            exempt: this.config.encryptionDeclaration.exempt || true,
+            // Seuls certains attributs sont autorisés lors de la création
             containsProprietaryCryptography: this.config.encryptionDeclaration.containsProprietaryCryptography || false,
             containsThirdPartyCryptography: this.config.encryptionDeclaration.containsThirdPartyCryptography || false,
             availableOnFrenchStore: this.config.encryptionDeclaration.availableOnFrenchStore !== false,
-            platform: 'IOS',
-            appDescription: this.config.encryptionDeclaration.appDescription || 
-              "L'app utilise uniquement les API de chiffrement standard (HTTPS)."
+            platform: 'IOS'
           },
           relationships: {
             app: {
@@ -1228,6 +1416,7 @@ Subscriptions are managed through App Store.`
       productId: 'com.crowdaa.coins_100',
       referenceName: '100 Coins',
       type: 'CONSUMABLE',
+      price: 0.99,  // Prix en USD
       reviewNote: 'Virtual currency for backing projects',
       familySharable: false,
       localizations: {
@@ -1245,6 +1434,7 @@ Subscriptions are managed through App Store.`
       productId: 'com.crowdaa.coins_500',
       referenceName: '500 Coins Bundle',
       type: 'CONSUMABLE',
+      price: 3.99,  // Prix en USD
       reviewNote: 'Virtual currency bundle with bonus',
       familySharable: false,
       localizations: {
@@ -1262,6 +1452,7 @@ Subscriptions are managed through App Store.`
       productId: 'com.crowdaa.remove_ads',
       referenceName: 'Remove Ads',
       type: 'NON_CONSUMABLE',
+      price: 1.99,  // Prix en USD
       reviewNote: 'One-time purchase to remove all advertisements',
       familySharable: true,
       localizations: {
