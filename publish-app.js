@@ -541,30 +541,11 @@ class AppStoreMetadataPublisher {
           }
         }
         
-        // Configurer le prix
+        // Configurer le prix - À faire manuellement dans App Store Connect
         if (sub.prices && sub.prices.length > 0) {
-          try {
-            const priceData = {
-              data: {
-                type: 'subscriptionPrices',
-                relationships: {
-                  subscription: {
-                    data: { type: 'subscriptions', id: subId }
-                  },
-                  subscriptionPricePoint: {
-                    data: { 
-                      type: 'subscriptionPricePoints', 
-                      id: `${sub.prices[0].pointId}` // ID du price point
-                    }
-                  }
-                }
-              }
-            };
-            
-            await this.apiRequest('POST', '/subscriptionPrices', priceData);
-          } catch (error) {
-            this.log(`Erreur configuration prix ${sub.productId}: ${error.message}`, 'warning');
-          }
+          this.log(`Prix ${sub.productId}: Configuration manuelle requise dans App Store Connect`, 'info');
+          // L'API ne supporte pas les IDs de prix prédéfinis
+          // Les prix doivent être configurés manuellement après création
         }
         
         this.log(`Abonnement créé: ${sub.referenceName} (${sub.productId})`, 'success');
@@ -582,68 +563,17 @@ class AppStoreMetadataPublisher {
     
     for (const iap of this.config.inAppPurchases) {
       try {
-        // Vérifier si l'IAP existe déjà
-        const existing = await this.apiRequest('GET',
-          `/apps/${this.appId}/inAppPurchases`);
+        // Note: Les IAP doivent être créés manuellement dans App Store Connect
+        // L'API v2 est en cours de développement mais pas encore disponible pour tous
+        this.log(`IAP ${iap.productId}: Création manuelle requise dans App Store Connect`, 'warning');
+        this.log(`   Type: ${iap.type || 'CONSUMABLE'}`, 'info');
+        this.log(`   Nom: ${iap.referenceName}`, 'info');
+        continue;
         
-        const existingIap = existing.data?.find(item => 
-          item.attributes.productId === iap.productId
-        );
-        
-        if (existingIap) {
-          this.log(`IAP ${iap.productId} existe déjà`, 'info');
-          continue;
-        }
-        
-        // Créer l'IAP
-        const iapData = {
-          data: {
-            type: 'inAppPurchases',
-            attributes: {
-              name: iap.referenceName,
-              productId: iap.productId,
-              inAppPurchaseType: iap.type || 'CONSUMABLE',
-              reviewNote: iap.reviewNote || 'In-app purchase for app functionality',
-              familySharable: iap.familySharable || false,
-              availableInAllTerritories: true
-            },
-            relationships: {
-              app: {
-                data: { type: 'apps', id: this.appId }
-              }
-            }
-          }
-        };
-        
-        const response = await this.apiRequest('POST', '/inAppPurchases', iapData);
-        const iapId = response.data.id;
-        
-        // Ajouter les localisations
-        for (const [locale, localization] of Object.entries(iap.localizations || {})) {
-          try {
-            const locData = {
-              data: {
-                type: 'inAppPurchaseLocalizations',
-                attributes: {
-                  locale: locale,
-                  name: localization.name,
-                  description: localization.description
-                },
-                relationships: {
-                  inAppPurchaseV2: {
-                    data: { type: 'inAppPurchases', id: iapId }
-                  }
-                }
-              }
-            };
-            
-            await this.apiRequest('POST', '/inAppPurchaseLocalizations', locData);
-          } catch (error) {
-            this.log(`Erreur localisation IAP ${locale}: ${error.message}`, 'warning');
-          }
-        }
-        
-        this.log(`IAP créé: ${iap.referenceName} (${iap.productId})`, 'success');
+        /* Code désactivé - en attente de l'API v2
+        const response = await this.apiRequest('POST', '/v2/inAppPurchases', iapData);
+        // Localisations et configuration seront faites manuellement
+        */
         
       } catch (error) {
         this.log(`Erreur création IAP ${iap.productId}: ${error.message}`, 'error');
@@ -1092,12 +1022,12 @@ Subscriptions are managed through App Store.`
       reviewNote: 'Monthly premium subscription with all features unlocked',
       localizations: {
         'en-US': {
-          name: 'Crowdaa Premium - Monthly',
-          description: 'Get unlimited access to all premium features:\n• Unlimited campaign creation\n• Advanced analytics dashboard\n• Priority customer support\n• Early access to new features\n• Ad-free experience\n• Exclusive creator tools\n\nAutomatically renews monthly.'
+          name: 'Premium Monthly',
+          description: 'Unlimited campaigns & analytics'
         },
         'fr-FR': {
-          name: 'Crowdaa Premium - Mensuel',
-          description: 'Accès illimité à toutes les fonctionnalités premium :\n• Création de campagnes illimitée\n• Tableau de bord analytique avancé\n• Support client prioritaire\n• Accès anticipé aux nouvelles fonctionnalités\n• Expérience sans publicité\n• Outils créateurs exclusifs\n\nRenouvellement automatique mensuel.'
+          name: 'Premium Mensuel',
+          description: 'Campagnes illimitées et analyses'
         }
       },
       prices: [
@@ -1118,12 +1048,12 @@ Subscriptions are managed through App Store.`
       reviewNote: 'Yearly premium subscription with 50% discount',
       localizations: {
         'en-US': {
-          name: 'Crowdaa Premium - Yearly (Save 50%)',
-          description: 'Get unlimited access to all premium features:\n• Unlimited campaign creation\n• Advanced analytics dashboard\n• Priority customer support\n• Early access to new features\n• Ad-free experience\n• Exclusive creator tools\n\nSave 50% with yearly billing!\nAutomatically renews yearly.'
+          name: 'Premium Yearly',
+          description: 'Save 50% - All premium features'
         },
         'fr-FR': {
-          name: 'Crowdaa Premium - Annuel (Économisez 50%)',
-          description: 'Accès illimité à toutes les fonctionnalités premium :\n• Création de campagnes illimitée\n• Tableau de bord analytique avancé\n• Support client prioritaire\n• Accès anticipé aux nouvelles fonctionnalités\n• Expérience sans publicité\n• Outils créateurs exclusifs\n\nÉconomisez 50% avec la facturation annuelle !\nRenouvellement automatique annuel.'
+          name: 'Premium Annuel',
+          description: '-50% - Toutes fonctionnalités'
         }
       },
       prices: [
