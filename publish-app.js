@@ -118,7 +118,9 @@ class AppStoreMetadataPublisher {
 
         const response = await axios({
           method,
-          url: `https://api.appstoreconnect.apple.com/v1${endpoint}`,
+          url: endpoint.startsWith('/v') 
+            ? `https://api.appstoreconnect.apple.com${endpoint}`
+            : `https://api.appstoreconnect.apple.com/v1${endpoint}`,
           headers,
           data,
           timeout: 30000
@@ -572,55 +574,100 @@ class AppStoreMetadataPublisher {
     if (!this.config.inAppPurchases || this.config.inAppPurchases.length === 0) return;
     
     this.log('\n💰 ACHATS INTÉGRÉS (IAP)', 'header');
+    this.log('Création des achats intégrés via API v2...', 'info');
     
-    // IMPORTANT: L'API App Store Connect ne permet PAS de créer des IAP programmatiquement en 2025
-    // Apple n'a pas encore rendu publics les endpoints de création d'IAP
-    // Seules les modifications (prix, localisations) d'IAP existants sont possibles via API
-    
-    this.log('⚠️  Les IAP doivent être créés manuellement dans App Store Connect', 'warning');
-    this.log('L\'API ne permet pas encore la création automatique d\'IAP\n', 'info');
-    
-    this.log('📝 INSTRUCTIONS POUR CRÉER LES IAP:', 'header');
-    this.log('1. Connectez-vous à App Store Connect', 'info');
-    this.log('2. Allez dans Mes apps > ${votre app} > Fonctionnalités > Achats intégrés', 'info');
-    this.log('3. Cliquez sur (+) pour créer chaque IAP ci-dessous:\n', 'info');
-    
-    // Afficher les détails de chaque IAP à créer manuellement
     for (const iap of this.config.inAppPurchases) {
-      this.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'dim');
-      this.log(`📦 ${iap.referenceName}`, 'header');
-      this.log(`   Product ID: ${iap.productId}`, 'success');
-      this.log(`   Type: ${iap.type || 'CONSUMABLE'}`, 'info');
-      
-      if (iap.price) {
-        this.log(`   Prix: $${iap.price} USD (Tier ${this.getPriceTier(iap.price)})`, 'info');
-      }
-      
-      if (iap.familySharable !== undefined) {
-        this.log(`   Partage familial: ${iap.familySharable ? '✓ Activé' : '✗ Désactivé'}`, 'info');
-      }
-      
-      if (iap.reviewNote) {
-        this.log(`   Note review: "${iap.reviewNote}"`, 'dim');
-      }
-      
-      // Afficher les localisations
-      if (iap.localizations) {
-        this.log(`\n   Localisations à configurer:`, 'info');
-        for (const [locale, loc] of Object.entries(iap.localizations)) {
-          this.log(`   • ${locale}:`, 'info');
-          this.log(`     Nom: "${loc.name}"`, 'success');
-          this.log(`     Description: "${loc.description}"`, 'dim');
+      try {
+        // Structure correcte selon la documentation Apple API v2
+        const iapData = {
+          data: {
+            type: 'inAppPurchases',  // Valeur requise selon la doc
+            attributes: {
+              name: iap.referenceName,  // Champ 'name' requis, pas 'referenceName'
+              productId: iap.productId,  // Required
+              inAppPurchaseType: iap.type || 'CONSUMABLE',  // Required
+              familySharable: iap.familySharable || false,  // Optional boolean
+              reviewNote: iap.reviewNote || ''  // Optional string
+            },
+            relationships: {
+              app: {  // 'app' au singulier selon la doc
+                data: { 
+                  type: 'apps', 
+                  id: this.appId 
+                }
+              }
+            }
+          }
+        };
+        
+        try {
+          // Appel API v2 pour créer l'IAP
+          const response = await this.apiRequest('POST', '/v2/inAppPurchases', iapData);
+          const iapId = response.data.id;
+          
+          this.log(`✅ IAP créé: ${iap.referenceName} (${iap.productId})`, 'success');
+          
+          // Ajouter les localisations si l'IAP est créé avec succès
+          if (iap.localizations) {
+            await this.addIAPLocalizations(iapId, iap.localizations);
+          }
+          
+          // Configurer le prix si disponible
+          if (iap.price) {
+            await this.setIAPPrice(iapId, iap.price);
+          }
+          
+        } catch (apiError) {
+          // Si l'API échoue, afficher des instructions pour création manuelle
+          if (apiError.message.includes('409') || apiError.message.includes('already exists')) {
+            this.log(`⚠️  IAP ${iap.productId} existe déjà`, 'warning');
+          } else if (apiError.message.includes('422') || apiError.message.includes('invalid')) {
+            this.log(`❌ IAP ${iap.productId}: Données invalides`, 'error');
+            this.log(`   Vérifiez le Product ID et le type`, 'info');
+          } else {
+            // Fallback: instructions manuelles
+            this.log(`⚠️  IAP ${iap.productId}: Création manuelle requise`, 'warning');
+            this.log(`   Dans App Store Connect > Fonctionnalités > Achats intégrés`, 'info');
+            this.log(`   Product ID: ${iap.productId}`, 'info');
+            this.log(`   Type: ${iap.type || 'CONSUMABLE'}`, 'info');
+            this.log(`   Nom: ${iap.referenceName}`, 'info');
+            if (iap.price) {
+              this.log(`   Prix suggéré: $${iap.price} (Tier ${this.getPriceTier(iap.price)})`, 'info');
+            }
+          }
         }
+        
+      } catch (error) {
+        this.log(`❌ Erreur création IAP ${iap.productId}: ${error.message}`, 'error');
       }
     }
-    
-    this.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'dim');
-    this.log('✅ Une fois les IAP créés dans App Store Connect:', 'success');
-    this.log('   - Ils seront automatiquement liés à votre app', 'info');
-    this.log('   - Configurez les prix selon les tiers suggérés', 'info');
-    this.log('   - Ajoutez les localisations indiquées', 'info');
-    this.log('   - Soumettez-les avec votre app pour review\n', 'info');
+  }
+  
+  async addIAPLocalizations(iapId, localizations) {
+    for (const [locale, localization] of Object.entries(localizations)) {
+      try {
+        const locData = {
+          data: {
+            type: 'inAppPurchaseLocalizations',
+            attributes: {
+              locale: locale,
+              name: localization.name,
+              description: localization.description
+            },
+            relationships: {
+              inAppPurchaseV2: {
+                data: { type: 'inAppPurchases', id: iapId }
+              }
+            }
+          }
+        };
+        
+        await this.apiRequest('POST', '/v1/inAppPurchaseLocalizations', locData);
+        this.log(`   ✅ Localisation ${locale} ajoutée`, 'success');
+      } catch (error) {
+        this.log(`   ⚠️  Localisation ${locale}: ${error.message}`, 'warning');
+      }
+    }
   }
   
   // Helper pour convertir un prix en tier App Store approximatif
@@ -639,11 +686,58 @@ class AppStoreMetadataPublisher {
     return tiers[price] || 'Custom';
   }
   
-  // Note: Cette fonction serait utilisée si les IAP pouvaient être créés via API
-  // Conservée pour référence future quand Apple rendra l'API disponible
   async setIAPPrice(iapId, price) {
-    // Non utilisé actuellement car les IAP ne peuvent pas être créés via API
-    return;
+    try {
+      // Récupérer les price points disponibles pour cet IAP
+      const pricePointsResponse = await this.apiRequest('GET',
+        `/v2/inAppPurchases/${iapId}/pricePoints?filter[territory]=USA&limit=200`);
+      
+      // Trouver le price point correspondant au prix demandé
+      const pricePoint = pricePointsResponse.data?.find(point => 
+        parseFloat(point.attributes.customerPrice) === price
+      );
+      
+      if (pricePoint) {
+        // Créer le price schedule pour appliquer le prix
+        const priceScheduleData = {
+          data: {
+            type: 'inAppPurchasePriceSchedules',
+            relationships: {
+              inAppPurchase: {
+                data: { type: 'inAppPurchases', id: iapId }
+              },
+              baseTerritory: {
+                data: { type: 'territories', id: 'USA' }
+              },
+              manualPrices: {
+                data: [{ type: 'inAppPurchasePrices', id: 'price-1' }]
+              }
+            }
+          },
+          included: [
+            {
+              id: 'price-1',
+              type: 'inAppPurchasePrices',
+              attributes: {
+                startDate: null
+              },
+              relationships: {
+                inAppPurchasePricePoint: {
+                  data: { type: 'inAppPurchasePricePoints', id: pricePoint.id }
+                }
+              }
+            }
+          ]
+        };
+        
+        await this.apiRequest('POST', '/v1/inAppPurchasePriceSchedules', priceScheduleData);
+        this.log(`   ✅ Prix configuré: $${price}`, 'success');
+      } else {
+        this.log(`   ⚠️  Prix $${price} non trouvé dans les tiers disponibles`, 'warning');
+      }
+    } catch (error) {
+      this.log(`   ⚠️  Configuration du prix: ${error.message}`, 'warning');
+    }
   }
 
   // ================= ÉTAPE 6: PRIX ET DISPONIBILITÉ =================
