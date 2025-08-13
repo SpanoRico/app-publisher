@@ -740,6 +740,111 @@ class AppStoreMetadataPublisher {
     }
   }
 
+  // ================= SHARED SECRET POUR IAP =================
+  async generateSharedSecret() {
+    try {
+      this.log('\n🔐 SHARED SECRET IAP', 'header');
+      this.log('Vérification du shared secret pour validation des reçus...', 'info');
+      
+      // Essayer différents endpoints selon la version de l'API
+      let secret = null;
+      
+      // Méthode 1: Via l'endpoint app (API moderne)
+      try {
+        const response = await this.apiRequest('POST', 
+          `/apps/${this.appId}/relationships/appStoreReviewDetail`,
+          {
+            data: {
+              type: 'appStoreReviewDetails',
+              attributes: {
+                generateSharedSecret: true
+              }
+            }
+          }
+        );
+        
+        if (response.data?.attributes?.sharedSecret) {
+          secret = response.data.attributes.sharedSecret;
+        }
+      } catch (e1) {
+        // Méthode 2: Via l'endpoint IAP
+        try {
+          const response = await this.apiRequest('POST',
+            `/apps/${this.appId}/inAppPurchases/generateSharedSecret`
+          );
+          
+          if (response.data?.sharedSecret) {
+            secret = response.data.sharedSecret;
+          }
+        } catch (e2) {
+          // Méthode 3: Via un endpoint alternatif
+          try {
+            const response = await this.apiRequest('PATCH',
+              `/apps/${this.appId}`,
+              {
+                data: {
+                  type: 'apps',
+                  id: this.appId,
+                  attributes: {
+                    generateAppSpecificSharedSecret: true
+                  }
+                }
+              }
+            );
+            
+            if (response.data?.attributes?.appSpecificSharedSecret) {
+              secret = response.data.attributes.appSpecificSharedSecret;
+            }
+          } catch (e3) {
+            // L'API ne permet pas encore la génération automatique
+          }
+        }
+      }
+      
+      if (secret) {
+        this.log('✅ Shared secret généré avec succès !', 'success');
+        this.log(`🔑 Secret: ${secret}`, 'success');
+        
+        // Sauvegarder dans un fichier
+        const filename = `shared-secret-${this.appId}.txt`;
+        const content = `# App Store Connect Shared Secret
+# App ID: ${this.appId}
+# Generated: ${new Date().toISOString()}
+# ⚠️  KEEP THIS SECRET SECURE!
+
+SHARED_SECRET=${secret}
+
+# Usage for receipt validation:
+# POST https://buy.itunes.apple.com/verifyReceipt
+# {
+#   "receipt-data": "<base64_receipt>",
+#   "password": "${secret}"
+# }
+`;
+        fs.writeFileSync(filename, content, 'utf8');
+        this.log(`💾 Secret sauvegardé dans: ${filename}`, 'info');
+        this.log('⚠️  Ne commitez jamais ce fichier !', 'warning');
+        
+        return secret;
+      } else {
+        this.log('⚠️  Le shared secret ne peut pas être généré via API', 'warning');
+        this.log('\n📝 CONFIGURATION MANUELLE REQUISE:', 'header');
+        this.log('1. Connectez-vous à App Store Connect', 'info');
+        this.log('2. My Apps > Votre App > App Information', 'info');
+        this.log('3. Section "App-Specific Shared Secret"', 'info');
+        this.log('4. Cliquez sur "Generate" ou "Regenerate"', 'info');
+        this.log('\n💡 Le shared secret est nécessaire pour:', 'info');
+        this.log('   • Valider les reçus d\'achat côté serveur', 'info');
+        this.log('   • Vérifier les abonnements actifs', 'info');
+        this.log('   • Recevoir les notifications de serveur', 'info');
+      }
+    } catch (error) {
+      this.log(`Shared secret: ${error.message}`, 'warning');
+    }
+    
+    return null;
+  }
+  
   // ================= ÉTAPE 6: PRIX ET DISPONIBILITÉ =================
 
   async setPricingAndAvailability() {
@@ -1174,6 +1279,9 @@ class AppStoreMetadataPublisher {
         await this.createSubscriptionGroup();
         await this.createSubscriptions();
         await this.createInAppPurchases();
+        
+        // Générer le shared secret pour validation des reçus
+        await this.generateSharedSecret();
       }
 
       // Build et review

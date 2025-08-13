@@ -1,0 +1,136 @@
+
+🚀 REMPLISSAGE COMPLET APP STORE CONNECT
+
+──────────────────────────────────────────────────
+✅  Authentification réussie
+
+📱 IDENTIFICATION APP
+
+⏳  Recherche de l'app...
+✅  App trouvée: Crowdaa New UI 2025 (6745080395)
+⏳  Création/récupération version 0.0.1...
+⚠️  Version existante trouvée (état: PREPARE_FOR_SUBMISSION)
+
+📝 MÉTADONNÉES
+
+⏳  Configuration des catégories...
+✅  Catégories configurées: SOCIAL_NETWORKING / FINANCE
+⏳  Configuration de la classification par âge...
+✅  Classification par âge configurée: 4+
+⏳  Configuration des descriptions et métadonnées...
+❌  API /appStoreVersionLocalizations/dbc13696-aa81-43b8-acfa-1bacf97c2f45: Attribute 'whatsNew' cannot be edited at this time
+✅  Métadonnées mises à jour: en-US (sans whatsNew)
+ℹ️  Screenshots en-US: Upload manuel recommandé dans App Store Connect
+❌  API /appStoreVersionLocalizations/3d7a507e-9889-4abe-96e9-da9867393d79: Attribute 'whatsNew' cannot be edited at this time
+✅  Métadonnées mises à jour: fr-FR (sans whatsNew)
+ℹ️  Screenshots fr-FR: Upload manuel recommandé dans App Store Connect
+
+💰 CONFIGURATION COMMERCIALE
+
+⏳  Configuration des prix et de la disponibilité...
+⏳  Configuration du planning de prix (API v2.3)...
+✅  Prix configuré: 0$ (Price Point: eyJzIjoiNjc0NTA4MDM5NSIsInQiOiJVU0EiLCJwIjoiMTAwMDAifQ)
+⏳  Configuration de la disponibilité mondiale...
+❌  API /apps/6745080395/appAvailabilityV2: There is no resource of type 'appAvailabilities' with id '6745080395'
+❌  API /v1/appAvailabilities: The resource 'v1/appAvailabilities' does not exist
+ℹ️  Disponibilité mondiale: Configuration manuelle requise dans App Store Connect
+
+💎 ACHATS INTÉGRÉS ET ABONNEMENTS
+
+💰  Création du groupe d'abonnements...
+ℹ️  Groupe d'abonnements existant trouvé: Crowdaa Premium
+💰  Création des abonnements...
+ℹ️  Abonnement com.crowdaa.premium_monthly existe déjà
+ℹ️  Abonnement com.crowdaa.premium_yearly existe déjà
+  
+💰 ACHATS INTÉGRÉS (IAP)
+ℹ️  Création des achats intégrés via API v2...
+❌  API /v2/inAppPurchases: This name is already being used by another in-app purchase associated with this app
+⚠️  ⚠️  IAP com.crowdaa.coins_100: Création manuelle requise
+ℹ️     Dans App Store Connect > Fonctionnalités > Achats intégrés
+ℹ️     Product ID: com.crowdaa.coins_100
+ℹ️     Type: CONSUMABLE
+ℹ️     Nom: 100 Coins
+ℹ️     Prix suggéré: $0.99 (Tier 1)
+❌  API /v2/inAppPurchases: This name is already being used by another in-app purchase associated with this app
+⚠️  ⚠️  IAP com.crowdaa.coins_500: Création manuelle requise
+ℹ️     Dans App Store Connect > Fonctionnalités > Achats intégrés
+ℹ️     Product ID: com.crowdaa.coins_500
+ℹ️     Type: CONSUMABLE
+ℹ️     Nom: 500 Coins Bundle
+ℹ️     Prix suggéré: $3.99 (Tier 4)
+❌  API /v2/inAppPurchases: This name is already being used by another in-app purchase associated with this app
+⚠️  ⚠️  IAP com.crowdaa.remove_ads: Création manuelle requise
+ℹ️     Dans App Store Connect > Fonctionnalités > Achats intégrés
+ℹ️     Product ID: com.crowdaa.remove_ads
+ℹ️     Type: NON_CONSUMABLE
+ℹ️     Nom: Remove Ads
+ℹ️     Prix suggéré: $1.99 (Tier 2)
+
+🔗 BUILD ET REVIEW
+
+⏳  Association du build existant...
+⚠️  Build exact non trouvé pour version 1, utilisation du plus récent: 1.0.123
+✅  Build 1.0.123 associé à la version
+⏳  Ajout des informations de review...
+✅  Informations de review configurées
+⏳  Déclaration de conformité export (chiffrement)...
+❌  API /appEncryptionDeclarations: 'appStoreVersion' is not a relationship on the resource 'appEncryptionDeclarations'
+⚠️  Erreur déclaration chiffrement: API /appEncryptionDeclarations: 'appStoreVersion' is not a relationship on the resource 'appEncryptionDeclarations'
+
+📋 SOUMISSION
+
+⚠️  Mode test - Soumission manuelle requise
+
+──────────────────────────────────────────────────
+
+✅ REMPLISSAGE TERMINÉ!
+
+📊 Résumé:
+   • Durée: 21s
+   • Version: 0.0.1
+   • Bundle ID: com.crowdaa.jwl1a63sz71
+   • Étapes réussies: 9
+
+✅ Complété avec succès:
+   • Authentification réussie
+   • App trouvée: Crowdaa New UI 2025 (6745080395)
+   • Catégories configurées: SOCIAL_NETWORKING / FINANCE
+   • Classification par âge configurée: 4+
+   • Métadonnées mises à jour: en-US (sans whatsNew)
+   • Métadonnées mises à jour: fr-FR (sans whatsNew)
+   • Prix configuré: 0$ (Price Point: eyJzIjoiNjc0NTA4MDM5NSIsInQiOiJVU0EiLCJwIjoiMTAwMDAifQ)
+   • Build 1.0.123 associé à la version
+   • Informations de review configurées
+
+⚠️  Actions manuelles requises:
+   1. Uploader les screenshots dans App Store Connect
+   2. Configurer la politique de confidentialité
+   3. Vérifier les prix des abonnements
+   4. Soumettre pour review
+
+⚠️  Avertissements (7):
+   • Version existante trouvée (état: PREPARE_FOR_SUBMISSION)
+   • ⚠️  IAP com.crowdaa.coins_100: Création manuelle requise
+   • ⚠️  IAP com.crowdaa.coins_500: Création manuelle requise
+   • ⚠️  IAP com.crowdaa.remove_ads: Création manuelle requise
+   • Build exact non trouvé pour version 1, utilisation du plus récent: 1.0.123
+   • Erreur déclaration chiffrement: API /appEncryptionDeclarations: 'appStoreVersion' is not a relationship on the resource 'appEncryptionDeclarations'
+   • Mode test - Soumission manuelle requise
+
+❌ Erreurs non bloquantes (8):
+   • API /appStoreVersionLocalizations/dbc13696-aa81-43b8-acfa-1bacf97c2f45: Attribute 'whatsNew' cannot be edited at this time
+   • API /appStoreVersionLocalizations/3d7a507e-9889-4abe-96e9-da9867393d79: Attribute 'whatsNew' cannot be edited at this time
+   • API /apps/6745080395/appAvailabilityV2: There is no resource of type 'appAvailabilities' with id '6745080395'
+   • API /v1/appAvailabilities: The resource 'v1/appAvailabilities' does not exist
+   • API /v2/inAppPurchases: This name is already being used by another in-app purchase associated with this app
+   • API /v2/inAppPurchases: This name is already being used by another in-app purchase associated with this app
+   • API /v2/inAppPurchases: This name is already being used by another in-app purchase associated with this app
+   • API /appEncryptionDeclarations: 'appStoreVersion' is not a relationship on the resource 'appEncryptionDeclarations'
+
+💡 Prochaines étapes:
+   1. Allez sur App Store Connect
+   2. Vérifiez les abonnements dans Monetization > Subscriptions
+   3. Configurez les prix pour chaque territoire
+   4. Uploadez les screenshots
+   5. Soumettez pour review
