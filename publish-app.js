@@ -571,136 +571,79 @@ class AppStoreMetadataPublisher {
   async createInAppPurchases() {
     if (!this.config.inAppPurchases || this.config.inAppPurchases.length === 0) return;
     
-    this.log('Création des achats intégrés (IAP)...', 'money');
+    this.log('\n💰 ACHATS INTÉGRÉS (IAP)', 'header');
     
+    // IMPORTANT: L'API App Store Connect ne permet PAS de créer des IAP programmatiquement en 2025
+    // Apple n'a pas encore rendu publics les endpoints de création d'IAP
+    // Seules les modifications (prix, localisations) d'IAP existants sont possibles via API
+    
+    this.log('⚠️  Les IAP doivent être créés manuellement dans App Store Connect', 'warning');
+    this.log('L\'API ne permet pas encore la création automatique d\'IAP\n', 'info');
+    
+    this.log('📝 INSTRUCTIONS POUR CRÉER LES IAP:', 'header');
+    this.log('1. Connectez-vous à App Store Connect', 'info');
+    this.log('2. Allez dans Mes apps > ${votre app} > Fonctionnalités > Achats intégrés', 'info');
+    this.log('3. Cliquez sur (+) pour créer chaque IAP ci-dessous:\n', 'info');
+    
+    // Afficher les détails de chaque IAP à créer manuellement
     for (const iap of this.config.inAppPurchases) {
-      try {
-        // Tentative avec l'API v2 (disponible selon certaines sources 2024-2025)
-        const iapData = {
-          data: {
-            type: 'inAppPurchaseV2s',  // Note: le type pourrait être inAppPurchaseV2s
-            attributes: {
-              name: iap.referenceName,
-              productId: iap.productId,
-              inAppPurchaseType: iap.type || 'CONSUMABLE',
-              reviewNote: iap.reviewNote || 'In-app purchase for app functionality',
-              familySharable: iap.familySharable || false,
-              state: 'READY_TO_SUBMIT'
-            },
-            relationships: {
-              app: {
-                data: { type: 'apps', id: this.appId }
-              }
-            }
-          }
-        };
-        
-        try {
-          // Essayer d'abord avec v2 (note: cet endpoint n'existe pas encore en 2025)
-          const response = await this.apiRequest('POST', '/v2/inAppPurchases', iapData);
-          const iapId = response.data.id;
-          
-          // Si succès, ajouter les localisations
-          for (const [locale, localization] of Object.entries(iap.localizations || {})) {
-            try {
-              const locData = {
-                data: {
-                  type: 'inAppPurchaseLocalizations',
-                  attributes: {
-                    locale: locale,
-                    name: localization.name,
-                    description: localization.description
-                  },
-                  relationships: {
-                    inAppPurchaseV2: {
-                      data: { type: 'inAppPurchaseV2s', id: iapId }
-                    }
-                  }
-                }
-              };
-              
-              await this.apiRequest('POST', '/v2/inAppPurchaseLocalizations', locData);
-            } catch (error) {
-              this.log(`Localisation IAP ${locale}: ${error.message}`, 'warning');
-            }
-          }
-          
-          // Configurer le prix si disponible
-          if (iap.price) {
-            await this.setIAPPrice(iapId, iap.price);
-          }
-          
-          this.log(`IAP créé: ${iap.referenceName} (${iap.productId})`, 'success');
-          
-        } catch (apiError) {
-          // Si l'API v2 échoue, afficher les instructions manuelles
-          if (apiError.message.includes('not found') || apiError.message.includes('not allow')) {
-            this.log(`IAP ${iap.productId}: Création manuelle requise dans App Store Connect`, 'warning');
-            this.log(`   Type: ${iap.type || 'CONSUMABLE'}`, 'info');
-            this.log(`   Nom: ${iap.referenceName}`, 'info');
-            if (iap.price) {
-              this.log(`   Prix suggéré: ${iap.price}$`, 'info');
-            }
-          } else {
-            throw apiError;
-          }
+      this.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'dim');
+      this.log(`📦 ${iap.referenceName}`, 'header');
+      this.log(`   Product ID: ${iap.productId}`, 'success');
+      this.log(`   Type: ${iap.type || 'CONSUMABLE'}`, 'info');
+      
+      if (iap.price) {
+        this.log(`   Prix: $${iap.price} USD (Tier ${this.getPriceTier(iap.price)})`, 'info');
+      }
+      
+      if (iap.familySharable !== undefined) {
+        this.log(`   Partage familial: ${iap.familySharable ? '✓ Activé' : '✗ Désactivé'}`, 'info');
+      }
+      
+      if (iap.reviewNote) {
+        this.log(`   Note review: "${iap.reviewNote}"`, 'dim');
+      }
+      
+      // Afficher les localisations
+      if (iap.localizations) {
+        this.log(`\n   Localisations à configurer:`, 'info');
+        for (const [locale, loc] of Object.entries(iap.localizations)) {
+          this.log(`   • ${locale}:`, 'info');
+          this.log(`     Nom: "${loc.name}"`, 'success');
+          this.log(`     Description: "${loc.description}"`, 'dim');
         }
-        
-      } catch (error) {
-        this.log(`Erreur création IAP ${iap.productId}: ${error.message}`, 'error');
       }
     }
+    
+    this.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'dim');
+    this.log('✅ Une fois les IAP créés dans App Store Connect:', 'success');
+    this.log('   - Ils seront automatiquement liés à votre app', 'info');
+    this.log('   - Configurez les prix selon les tiers suggérés', 'info');
+    this.log('   - Ajoutez les localisations indiquées', 'info');
+    this.log('   - Soumettez-les avec votre app pour review\n', 'info');
   }
   
+  // Helper pour convertir un prix en tier App Store approximatif
+  getPriceTier(price) {
+    const tiers = {
+      0.99: 1,
+      1.99: 2, 
+      2.99: 3,
+      3.99: 4,
+      4.99: 5,
+      5.99: 6,
+      9.99: 10,
+      19.99: 20,
+      49.99: 50
+    };
+    return tiers[price] || 'Custom';
+  }
+  
+  // Note: Cette fonction serait utilisée si les IAP pouvaient être créés via API
+  // Conservée pour référence future quand Apple rendra l'API disponible
   async setIAPPrice(iapId, price) {
-    try {
-      // Récupérer les price points pour les IAP
-      const pricePointsResponse = await this.apiRequest('GET',
-        `/v2/inAppPurchases/${iapId}/pricePoints?filter[territory]=USA`);
-      
-      const pricePoint = pricePointsResponse.data?.find(point => 
-        parseFloat(point.attributes.customerPrice) === price
-      );
-      
-      if (pricePoint) {
-        const priceScheduleData = {
-          data: {
-            type: 'inAppPurchasePriceSchedules',
-            relationships: {
-              inAppPurchase: {
-                data: { type: 'inAppPurchaseV2s', id: iapId }
-              },
-              baseTerritory: {
-                data: { type: 'territories', id: 'USA' }
-              },
-              manualPrices: {
-                data: [{ type: 'inAppPurchasePrices', id: 'price-1' }]
-              }
-            }
-          },
-          included: [
-            {
-              id: 'price-1',
-              type: 'inAppPurchasePrices',
-              attributes: {
-                startDate: null
-              },
-              relationships: {
-                inAppPurchasePricePoint: {
-                  data: { type: 'inAppPurchasePricePoints', id: pricePoint.id }
-                }
-              }
-            }
-          ]
-        };
-        
-        await this.apiRequest('POST', '/v2/inAppPurchasePriceSchedules', priceScheduleData);
-        this.log(`   Prix configuré: ${price}$`, 'info');
-      }
-    } catch (error) {
-      // Le prix devra être configuré manuellement
-      this.log(`   Prix à configurer manuellement: ${price}$`, 'info');
-    }
+    // Non utilisé actuellement car les IAP ne peuvent pas être créés via API
+    return;
   }
 
   // ================= ÉTAPE 6: PRIX ET DISPONIBILITÉ =================
@@ -794,75 +737,108 @@ class AppStoreMetadataPublisher {
     
     try {
       // Récupérer tous les territoires disponibles
-      const territoriesResponse = await this.apiRequest('GET', '/territories?limit=200');
+      const territoriesResponse = await this.apiRequest('GET', '/v1/territories?limit=200');
       const allTerritories = territoriesResponse.data.map(t => ({
         type: 'territories',
         id: t.id
       }));
       
-      // Créer ou mettre à jour les disponibilités
+      // Vérifier d'abord si une configuration existe via appAvailabilityV2
+      try {
+        const existing = await this.apiRequest('GET', `/apps/${this.appId}/appAvailabilityV2`);
+        
+        if (existing.data) {
+          this.log(`Disponibilité déjà configurée dans ${existing.data.attributes?.territoryCount || 'plusieurs'} territoires`, 'info');
+          
+          // Si pas tous les territoires, on peut essayer de mettre à jour
+          if (existing.data.attributes?.territoryCount < allTerritories.length) {
+            await this.updateAppAvailability(existing.data.id, allTerritories);
+          }
+        } else {
+          // Créer une nouvelle disponibilité avec v2
+          await this.createAppAvailability(allTerritories);
+        }
+      } catch (error) {
+        // Fallback vers l'API v1 si v2 n'est pas disponible
+        await this.setAppAvailabilityV1(allTerritories);
+      }
+      
+    } catch (error) {
+      this.log(`Configuration disponibilité: ${error.message}`, 'info');
+    }
+  }
+  
+  async createAppAvailability(territories) {
+    try {
       const availabilityData = {
         data: {
           type: 'appAvailabilities',
-          attributes: {
-            availableInNewTerritories: true // Automatiquement disponible dans les nouveaux territoires
-          },
           relationships: {
-            app: {
-              data: { type: 'apps', id: this.appId }
+            app: { 
+              data: { type: 'apps', id: this.appId } 
             },
             availableTerritories: {
-              data: allTerritories
+              data: territories
             }
           }
         }
       };
       
-      // Vérifier si une configuration existe déjà
-      try {
-        const existing = await this.apiRequest('GET', `/apps/${this.appId}/appAvailability`);
-        
-        if (existing.data) {
-          // Mettre à jour
-          availabilityData.data.id = existing.data.id;
-          await this.apiRequest('PATCH', `/appAvailabilities/${existing.data.id}`, availabilityData);
-        } else {
-          // Créer
-          await this.apiRequest('POST', '/appAvailabilities', availabilityData);
-        }
-        
-        this.log(`Disponibilité configurée: ${allTerritories.length} territoires`, 'success');
-      } catch (error) {
-        // L'endpoint appAvailabilities pourrait ne pas être disponible pour toutes les apps
-        // Dans ce cas, essayer avec l'ancien système
-        await this.setAppAvailabilityLegacy(allTerritories);
-      }
-      
-    } catch (error) {
-      this.log(`Configuration disponibilité: Vérifiez dans App Store Connect`, 'info');
-    }
-  }
-  
-  async setAppAvailabilityLegacy(territories) {
-    // Méthode alternative via l'app info
-    try {
-      if (this.appInfoId) {
-        const appInfoData = {
-          data: {
-            type: 'appInfos',
-            id: this.appInfoId,
-            attributes: {
-              availableInNewTerritories: true
-            }
-          }
-        };
-        
-        await this.apiRequest('PATCH', `/appInfos/${this.appInfoId}`, appInfoData);
-        this.log('Disponibilité mondiale activée (nouveaux territoires)', 'success');
-      }
+      await this.apiRequest('POST', '/v2/appAvailabilities', availabilityData);
+      this.log(`Disponibilité mondiale configurée: ${territories.length} territoires`, 'success');
     } catch (error) {
       this.log('Disponibilité mondiale: Configuration manuelle requise', 'info');
     }
+  }
+  
+  async updateAppAvailability(availabilityId, territories) {
+    try {
+      const updateData = {
+        data: {
+          type: 'appAvailabilities',
+          id: availabilityId,
+          relationships: {
+            availableTerritories: {
+              data: territories
+            }
+          }
+        }
+      };
+      
+      await this.apiRequest('PATCH', `/v2/appAvailabilities/${availabilityId}`, updateData);
+      this.log(`Disponibilité mise à jour: ${territories.length} territoires`, 'success');
+    } catch (error) {
+      this.log('Mise à jour disponibilité: Configuration manuelle requise', 'info');
+    }
+  }
+  
+  async setAppAvailabilityV1(territories) {
+    // Méthode alternative avec l'API v1
+    try {
+      const availabilityData = {
+        data: {
+          type: 'appAvailabilities',
+          relationships: {
+            app: { 
+              data: { type: 'apps', id: this.appId } 
+            },
+            availableTerritories: {
+              data: territories
+            }
+          }
+        }
+      };
+      
+      await this.apiRequest('POST', '/v1/appAvailabilities', availabilityData);
+      this.log(`Disponibilité configurée (v1): ${territories.length} territoires`, 'success');
+    } catch (error) {
+      await this.setAppAvailabilityLegacy();
+    }
+  }
+  
+  async setAppAvailabilityLegacy() {
+    // Méthode finale de fallback
+    this.log('Disponibilité mondiale: Configuration manuelle requise dans App Store Connect', 'info');
   }
 
   // ================= ÉTAPE 7: BUILD ET REVIEW =================
@@ -978,8 +954,8 @@ class AppStoreMetadataPublisher {
             // Seuls certains attributs sont autorisés lors de la création
             containsProprietaryCryptography: this.config.encryptionDeclaration.containsProprietaryCryptography || false,
             containsThirdPartyCryptography: this.config.encryptionDeclaration.containsThirdPartyCryptography || false,
-            availableOnFrenchStore: this.config.encryptionDeclaration.availableOnFrenchStore !== false,
-            platform: 'IOS'
+            availableOnFrenchStore: this.config.encryptionDeclaration.availableOnFrenchStore !== false
+            // platform n'est pas autorisé dans CREATE
           },
           relationships: {
             app: {
