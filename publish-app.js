@@ -327,7 +327,19 @@ class AppStoreMetadataPublisher {
         
         const versionResponse = await this.apiRequest('GET', `/appStoreVersions/${this.versionId}`);
         const versionState = versionResponse.data.attributes.appStoreState;
-        const canEditWhatsNew = ['PREPARE_FOR_SUBMISSION', 'DEVELOPER_REJECTED'].includes(versionState);
+        
+        // États permettant l'édition du What's New (documentation août 2025)
+        const editableStates = [
+          'PREPARE_FOR_SUBMISSION',
+          'DEVELOPER_REJECTED',
+          'WAITING_FOR_REVIEW'  // Ajouté selon la doc 2025
+        ];
+        
+        const canEditWhatsNew = editableStates.includes(versionState);
+        
+        if (!canEditWhatsNew && localization.whatsNew) {
+          this.log(`What's New non éditable (état: ${versionState})`, 'info');
+        }
         
         const localizationData = {
           data: {
@@ -589,11 +601,76 @@ class AppStoreMetadataPublisher {
     this.log('Configuration des prix et de la disponibilité...', 'loading');
     
     try {
-      this.log('Prix: Gratuit par défaut', 'info');
-      this.log('Disponibilité: Mondiale par défaut', 'info');
-      this.log('Vérifiez dans App Store Connect > Pricing and Availability', 'info');
+      // Nouveau système de tarification v2.3 (août 2025)
+      if (this.config.pricing.schedulePrice !== undefined) {
+        await this.setAppPriceSchedule();
+      } else {
+        this.log('Prix: Gratuit par défaut', 'info');
+        this.log('Disponibilité: Mondiale par défaut', 'info');
+      }
     } catch (error) {
-      this.log('Configuration prix/disponibilité: Vérifiez dans App Store Connect', 'info');
+      this.log(`Erreur configuration prix: ${error.message}`, 'warning');
+    }
+  }
+
+  async setAppPriceSchedule() {
+    this.log('Configuration du planning de prix (API v2.3)...', 'loading');
+    
+    try {
+      // Récupérer les price points disponibles
+      const pricePointsResponse = await this.apiRequest('GET',
+        `/apps/${this.appId}/appPricePoints?filter[territory]=USA&limit=100`);
+      
+      // Trouver le price point pour le prix souhaité
+      const targetPrice = this.config.pricing.schedulePrice;
+      const pricePoint = pricePointsResponse.data.find(point => 
+        parseFloat(point.attributes.customerPrice) === targetPrice
+      );
+      
+      if (!pricePoint) {
+        this.log(`Price point non trouvé pour ${targetPrice}$`, 'warning');
+        return;
+      }
+      
+      const scheduleData = {
+        data: {
+          type: 'appPriceSchedules',
+          relationships: {
+            app: {
+              data: { type: 'apps', id: this.appId }
+            },
+            baseTerritory: {
+              data: { type: 'territories', id: 'USA' }
+            },
+            manualPrices: {
+              data: [
+                { type: 'appPrices', id: 'new-price' }
+              ]
+            }
+          }
+        },
+        included: [
+          {
+            id: 'new-price',
+            type: 'appPrices',
+            attributes: {
+              startDate: new Date().toISOString().split('T')[0],
+              endDate: null
+            },
+            relationships: {
+              appPricePoint: {
+                data: { type: 'appPricePoints', id: pricePoint.id }
+              }
+            }
+          }
+        ]
+      };
+      
+      await this.apiRequest('POST', '/appPriceSchedules', scheduleData);
+      this.log(`Prix configuré: ${targetPrice}$ (Price Point: ${pricePoint.id})`, 'success');
+      
+    } catch (error) {
+      this.log(`Erreur App Price Schedule: ${error.message}`, 'warning');
     }
   }
 
@@ -697,6 +774,73 @@ class AppStoreMetadataPublisher {
     }
   }
 
+  async addEncryptionDeclaration() {
+    if (!this.config.encryptionDeclaration) return;
+    
+    this.log('Déclaration de conformité export (chiffrement)...', 'loading');
+    
+    try {
+      const encryptionData = {
+        data: {
+          type: 'appEncryptionDeclarations',
+          attributes: {
+            // usesEncryption ne doit pas être dans les attributs selon l'API
+            exempt: this.config.encryptionDeclaration.exempt || true,
+            containsProprietaryCryptography: this.config.encryptionDeclaration.containsProprietaryCryptography || false,
+            containsThirdPartyCryptography: this.config.encryptionDeclaration.containsThirdPartyCryptography || false,
+            availableOnFrenchStore: this.config.encryptionDeclaration.availableOnFrenchStore !== false,
+            platform: 'IOS',
+            appDescription: this.config.encryptionDeclaration.appDescription || 
+              "L'app utilise uniquement les API de chiffrement standard (HTTPS)."
+          },
+          relationships: {
+            app: {
+              data: { type: 'apps', id: this.appId }
+            }
+          }
+        }
+      };
+
+      if (this.versionId) {
+        encryptionData.data.relationships.appStoreVersion = {
+          data: { type: 'appStoreVersions', id: this.versionId }
+        };
+      }
+
+      const response = await this.apiRequest('POST', '/appEncryptionDeclarations', encryptionData);
+      const declarationId = response.data.id;
+      
+      // Associer la déclaration au build actuel si disponible
+      if (declarationId) {
+        const buildsResponse = await this.apiRequest('GET',
+          `/appStoreVersions/${this.versionId}/build`);
+        
+        if (buildsResponse.data) {
+          const buildId = buildsResponse.data.id;
+          
+          await this.apiRequest('POST', 
+            `/appEncryptionDeclarations/${declarationId}/relationships/builds`, {
+              data: [
+                { type: 'builds', id: buildId }
+              ]
+            });
+          
+          this.log('Déclaration de chiffrement créée et associée au build', 'success');
+        } else {
+          this.log('Déclaration de chiffrement créée (à associer au build)', 'success');
+        }
+      }
+      
+    } catch (error) {
+      // Si la déclaration existe déjà, ce n'est pas une erreur critique
+      if (error.message.includes('already exists')) {
+        this.log('Déclaration de chiffrement déjà existante', 'info');
+      } else {
+        this.log(`Erreur déclaration chiffrement: ${error.message}`, 'warning');
+      }
+    }
+  }
+
   // ================= ÉTAPE 8: SOUMISSION =================
 
   async submitForReview() {
@@ -778,6 +922,7 @@ class AppStoreMetadataPublisher {
       console.log(chalk.yellow('\n🔗 BUILD ET REVIEW\n'));
       await this.attachBuildToVersion();
       await this.addReviewDetails();
+      await this.addEncryptionDeclaration();
 
       // Soumission
       console.log(chalk.yellow('\n📋 SOUMISSION\n'));
@@ -961,10 +1106,21 @@ Merci de rejoindre la communauté Crowdaa !`,
     }
   },
   
-  // Prix et disponibilité
+  // Prix et disponibilité (API v2.3 - août 2025)
   pricing: {
-    tier: 0, // Gratuit
+    tier: 0, // Gratuit (legacy)
+    schedulePrice: 0.0, // Nouveau système: 0.0 = gratuit, ou 0.99, 1.99, etc.
     availableInAllTerritories: true
+  },
+  
+  // Déclaration de chiffrement (conformité export)
+  encryptionDeclaration: {
+    usesEncryption: true,  // L'app utilise HTTPS
+    exempt: true,  // Exempt car utilise uniquement le chiffrement standard iOS
+    containsProprietaryCryptography: false,
+    containsThirdPartyCryptography: false,
+    availableOnFrenchStore: true,
+    appDescription: "L'app utilise uniquement HTTPS et les API de chiffrement standard d'iOS pour sécuriser les communications."
   },
   
   // Informations de review
