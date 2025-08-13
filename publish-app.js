@@ -503,11 +503,10 @@ class AppStoreMetadataPublisher {
               productId: sub.productId,
               familySharable: sub.familySharable || false,
               reviewNote: sub.reviewNote || 'Subscription for premium features',
-              groupLevel: sub.groupLevel || 1,
-              availableInAllTerritories: true
+              groupLevel: sub.groupLevel || 1
             },
             relationships: {
-              subscriptionGroup: {
+              group: {
                 data: { type: 'subscriptionGroups', id: this.subscriptionGroupId }
               }
             }
@@ -585,9 +584,13 @@ class AppStoreMetadataPublisher {
       try {
         // Vérifier si l'IAP existe déjà
         const existing = await this.apiRequest('GET',
-          `/apps/${this.appId}/inAppPurchasesV2?filter[productId]=${iap.productId}`);
+          `/apps/${this.appId}/inAppPurchases`);
         
-        if (existing.data && existing.data.length > 0) {
+        const existingIap = existing.data?.find(item => 
+          item.attributes.productId === iap.productId
+        );
+        
+        if (existingIap) {
           this.log(`IAP ${iap.productId} existe déjà`, 'info');
           continue;
         }
@@ -595,7 +598,7 @@ class AppStoreMetadataPublisher {
         // Créer l'IAP
         const iapData = {
           data: {
-            type: 'inAppPurchasesV2',
+            type: 'inAppPurchases',
             attributes: {
               name: iap.referenceName,
               productId: iap.productId,
@@ -612,7 +615,7 @@ class AppStoreMetadataPublisher {
           }
         };
         
-        const response = await this.apiRequest('POST', '/inAppPurchasesV2', iapData);
+        const response = await this.apiRequest('POST', '/inAppPurchases', iapData);
         const iapId = response.data.id;
         
         // Ajouter les localisations
@@ -628,7 +631,7 @@ class AppStoreMetadataPublisher {
                 },
                 relationships: {
                   inAppPurchaseV2: {
-                    data: { type: 'inAppPurchasesV2', id: iapId }
+                    data: { type: 'inAppPurchases', id: iapId }
                   }
                 }
               }
